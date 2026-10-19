@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { extractScore, startServer, type ReportPayload } from './server.js';
+import { extractBreakdown, extractResult, extractScore, startServer, type ReportPayload } from './server.js';
 
-function makePayload(scores: number[]): ReportPayload {
+function makePayload(scores: number[], breakdown: ReportPayload['Speedometer-3']['metrics']['breakdown'] = {}): ReportPayload {
   return {
     'Speedometer-3': {
       metrics: {
         Score: { current: [scores] },
+        breakdown,
       },
     },
   };
@@ -26,6 +27,23 @@ describe('extractScore', () => {
 
   it('throws on empty scores array', () => {
     expect(() => extractScore(makePayload([]))).toThrow('No scores');
+  });
+});
+
+describe('extractBreakdown', () => {
+  it('returns stable suite and subtest measurements while excluding aggregate metrics', () => {
+    const payload = makePayload([40, 42], {
+      'TodoMVC-React': { name: 'TodoMVC-React', unit: 'ms', values: [100, 104], mean: 102 },
+      'TodoMVC-React/Adding100Items': { name: 'TodoMVC-React/Adding100Items', unit: 'ms', values: [20, 22], mean: 21 },
+      'TodoMVC-React/Adding100Items/Sync': { name: 'TodoMVC-React/Adding100Items/Sync', unit: 'ms', values: [19, 21], mean: 20 },
+      'Iteration-0-Total': { name: 'Iteration-0-Total', unit: 'ms', values: [100] },
+    });
+
+    expect(extractBreakdown(payload)).toEqual([
+      expect.objectContaining({ suite_id: 'todomvc-react', subtest_id: '__total__', mean: 102 }),
+      expect.objectContaining({ suite_id: 'todomvc-react', subtest_id: 'adding100items', mean: 21, samples: [20, 22] }),
+    ]);
+    expect(extractResult(payload).score).toBe(41);
   });
 });
 
